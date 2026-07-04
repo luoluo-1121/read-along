@@ -1,0 +1,6 @@
+# 运行时数据：书（有版权）、阅读进度、批注（私人对话）、推送日志
+data/
+
+node_modules/
+*.log
+.DS_Store

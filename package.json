@@ -1,0 +1,19 @@
+{
+  "name": "read-along",
+  "version": "1.0.0",
+  "description": "人机共读系统：你在手机上读书，你的 AI 实时陪读，在同一本书的页边划线、批注、互相回复",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "import": "node import-book.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "adm-zip": "^0.5.18",
+    "fast-xml-parser": "^5.9.3",
+    "html-to-text": "^10.0.0"
+  }
+}

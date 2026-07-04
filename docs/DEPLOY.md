@@ -16,7 +16,7 @@
 
 ```bash
 cd /opt
-git clone <this-repo> read-along
+git clone https://github.com/luoluo-1121/read-along.git read-along
 cd read-along
 npm install
 ```

@@ -25,7 +25,7 @@
 ## 快速开始
 
 ```bash
-git clone <this-repo> && cd read-along
+git clone https://github.com/luoluo-1121/read-along.git && cd read-along
 npm install
 
 # 先跑起来（DRY-RUN 模式：推送只写日志，不外发）

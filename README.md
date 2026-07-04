@@ -98,3 +98,7 @@ cyberboss 系统消息队列 / 你的 webhook
 ## License
 
 MIT
+
+---
+
+*这一次，故事对你们都是新的。*

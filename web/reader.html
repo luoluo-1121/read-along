@@ -66,6 +66,8 @@ html, body { height: 100%; background: var(--bg); font-family: -apple-system, "P
 .r-back { font-size: 24px; padding: 0 10px 0 2px; }
 .r-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .r-pencil { font-size: 19px; padding: 0 4px; }
+.r-mark { font-size: 18px; padding: 0 12px 0 4px; color: var(--faint); }
+.r-mark.on { color: var(--accent); }
 .reader.annotating .r-pencil { color: var(--human-deep); }
 .anno-confirm { display: none; position: absolute; right: 14px; top: calc(max(10px, env(safe-area-inset-top)) + 40px); gap: 12px; z-index: 5; }
 .reader.annotating .anno-confirm { display: flex; }
@@ -145,6 +147,7 @@ html, body { height: 100%; background: var(--bg); font-family: -apple-system, "P
     </div>
     <div class="panel-btns">
       <button id="bk-toc-btn">目录</button>
+      <button id="bk-mark-btn">书签</button>
       <button class="primary" id="bk-read-btn">继续阅读</button>
     </div>
     <div class="tabs" id="bk-tabs">
@@ -161,6 +164,7 @@ html, body { height: 100%; background: var(--bg); font-family: -apple-system, "P
   <div class="reader-top">
     <div class="r-back" id="r-back">‹</div>
     <div class="r-title" id="r-title"></div>
+    <div class="r-mark" id="r-mark">&#x2691;&#xFE0E;</div>
     <div class="r-pencil" id="r-pencil">✎</div>
   </div>
   <div class="anno-confirm">
@@ -226,7 +230,7 @@ const sheetMask = document.getElementById('sheet-mask');
 const toastEl = document.getElementById('toast');
 
 const R = {
-  books: [], book: null, manifest: null, chapters: {}, annos: [],
+  books: [], book: null, manifest: null, chapters: {}, annos: [], marks: [],
   ch: 0, page: 0, pages: 1, paraPages: [], step: 0,
   beatTimer: null, sessionOpen: false,
   selStart: null, selEnd: null, previewPara: null, pendingSel: null,
@@ -277,6 +281,13 @@ async function apiPost(path, body) {
     body: JSON.stringify(body),
     keepalive: true,
   });
+  const json = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(json.error || r.status);
+  return json;
+}
+
+async function apiDelete(path) {
+  const r = await fetch(API + path, { method: 'DELETE' });
   const json = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(json.error || r.status);
   return json;
@@ -341,14 +352,15 @@ async function openBookPanel(bookId) {
   document.getElementById('bk-title').textContent = book.title;
   refreshBookMeta();
   R.panelMode = 'annos';
-  document.getElementById('bk-toc-btn').textContent = '目录';
   overlayBook.classList.add('open');
   try {
-    const [detail, annos] = await Promise.all([
+    const [detail, annos, marks] = await Promise.all([
       apiGet('/book/' + bookId),
       apiGet('/annotations/' + bookId),
+      apiGet('/bookmarks/' + bookId),
     ]);
     R.manifest = detail.manifest;
+    R.marks = marks.bookmarks;
     R.book.lastPos = detail.lastPos;
     R.book.progressPct = detail.progressPct;
     R.book.lastOpenedAt = detail.lastOpenedAt;
@@ -379,6 +391,16 @@ function renderBookList() {
     if (!R.manifest) { list.innerHTML = '<div class="empty-tip">目录加载中…</div>'; return; }
     list.innerHTML = R.manifest.chapters.map((ch) =>
       `<div class="toc-item" data-ch="${ch.idx}"><span>${esc(ch.title)}</span><span class="toc-chars">${ch.chars}字</span></div>`
+    ).join('');
+    return;
+  }
+  if (R.panelMode === 'marks') {
+    if (!R.marks.length) { list.innerHTML = '<div class="empty-tip">还没有书签，读到哪儿夹到哪儿</div>'; return; }
+    list.innerHTML = R.marks.map((mk) =>
+      `<div class="anno-item mark-item" data-ch="${mk.chapter}" data-seq="${mk.seq}">
+        <div class="anno-quote">${esc(mk.excerpt)}</div>
+        <div class="anno-sub"><span>${esc(mk.chapterTitle)}</span><span>${fmtTime(mk.createdAt)}</span></div>
+      </div>`
     ).join('');
     return;
   }
@@ -414,14 +436,17 @@ document.getElementById('bk-tabs').addEventListener('click', (e) => {
     R.filter = t.dataset.f;
     document.querySelectorAll('#bk-tabs span[data-f]').forEach((s) => s.classList.toggle('on', s === t));
     R.panelMode = 'annos';
-    document.getElementById('bk-toc-btn').textContent = '目录';
     renderBookList();
   }
 });
 
-document.getElementById('bk-toc-btn').addEventListener('click', (e) => {
+document.getElementById('bk-toc-btn').addEventListener('click', () => {
   R.panelMode = R.panelMode === 'toc' ? 'annos' : 'toc';
-  e.target.textContent = R.panelMode === 'toc' ? '批注' : '目录';
+  renderBookList();
+});
+
+document.getElementById('bk-mark-btn').addEventListener('click', () => {
+  R.panelMode = R.panelMode === 'marks' ? 'annos' : 'marks';
   renderBookList();
 });
 
@@ -434,6 +459,8 @@ document.getElementById('bk-read-btn').addEventListener('click', () => {
 document.getElementById('bk-list').addEventListener('click', (e) => {
   const toc = e.target.closest('.toc-item');
   if (toc) { enterReader(Number(toc.dataset.ch), null); return; }
+  const mark = e.target.closest('.mark-item');
+  if (mark) { enterReader(Number(mark.dataset.ch), Number(mark.dataset.seq)); return; }
   const item = e.target.closest('.anno-item');
   if (item) {
     const anno = R.annos.find((a) => a.id === item.dataset.id);
@@ -564,6 +591,7 @@ function gotoPage(page, { silentIfSame = true } = {}) {
   const range = currentParaRange();
   const progress = range ? Math.round(((range.seqStart + 1) / R.manifest.paraCount) * 1000) / 10 : 0;
   rFoot.textContent = `${clamped + 1}/${R.pages} · ${ch.title} · ${progress}%`;
+  updateMarkBtn();
   if (range) sendBeat('page', range);
 }
 
@@ -634,6 +662,39 @@ function exitReader() {
   openBookPanel(R.book.bookId);
 }
 
+/* ── 书签 ── */
+
+function pageMark() {
+  const range = currentParaRange();
+  if (!range) return null;
+  return R.marks.find((mk) => mk.seq >= range.seqStart && mk.seq <= range.seqEnd) || null;
+}
+
+function updateMarkBtn() {
+  document.getElementById('r-mark').classList.toggle('on', Boolean(pageMark()));
+}
+
+async function toggleBookmark() {
+  const range = currentParaRange();
+  if (!range) return;
+  const existing = pageMark();
+  try {
+    if (existing) {
+      await apiDelete(`/bookmarks/${R.book.bookId}/${existing.id}`);
+      R.marks = R.marks.filter((mk) => mk.id !== existing.id);
+      toast('书签已取下');
+    } else {
+      const { bookmark } = await apiPost('/bookmarks', { bookId: R.book.bookId, seq: range.seqStart });
+      R.marks.push(bookmark);
+      R.marks.sort((a, b) => a.seq - b.seq);
+      toast('书签夹好了');
+    }
+    updateMarkBtn();
+  } catch (e) {
+    toast('书签失败：' + e.message);
+  }
+}
+
 /* ── 阅读器点击：翻页 / 批注 ── */
 
 function openBar() {
@@ -652,6 +713,7 @@ reader.addEventListener('click', async (e) => {
   }
   if (e.target.closest('#anno-no')) { exitAnnotateMode(); return; }
   if (e.target.closest('#anno-ok')) { confirmSelection(); return; }
+  if (e.target.closest('#r-mark')) { toggleBookmark(); return; }
 
   if (e.target.closest('#rb-prev')) { closeBar(); if (R.ch > 0) await showChapter(R.ch - 1, null); return; }
   if (e.target.closest('#rb-next')) { closeBar(); if (R.ch < R.manifest.chapterCount - 1) await showChapter(R.ch + 1, null); return; }

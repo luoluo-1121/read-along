@@ -254,6 +254,43 @@ function addComment(bookId, annoId, body) {
   return { status: 200, json: { ok: true, comment } };
 }
 
+// ── 书签（读者私有：不推送，也不进 AI 侧 gate） ──
+
+function createBookmark(body) {
+  const { bookId } = body || {};
+  const manifest = store.readManifest(bookId);
+  if (!manifest) return { status: 404, json: { error: "unknown book" } };
+  const seq = Number(body.seq);
+  if (!Number.isInteger(seq) || seq < 0 || seq >= manifest.paraCount) {
+    return { status: 400, json: { error: "bad seq" } };
+  }
+  const bookmarks = store.readBookmarks(bookId);
+  if (bookmarks.some((m) => m.seq === seq)) return { status: 409, json: { error: "bookmark exists" } };
+  const ch = chapterOfSeq(manifest, seq);
+  const chapter = store.readChapter(bookId, ch.idx);
+  const para = chapter ? chapter.paragraphs[seq - ch.baseSeq] : "";
+  const bookmark = {
+    id: store.newId(),
+    seq,
+    chapter: ch.idx,
+    chapterTitle: ch.title,
+    excerpt: String(para || "").slice(0, 40),
+    createdAt: new Date().toISOString(),
+  };
+  bookmarks.push(bookmark);
+  bookmarks.sort((a, b) => a.seq - b.seq);
+  store.writeBookmarks(bookId, bookmarks);
+  return { status: 200, json: { ok: true, bookmark } };
+}
+
+function deleteBookmark(bookId, markId) {
+  const bookmarks = store.readBookmarks(bookId);
+  const next = bookmarks.filter((m) => m.id !== markId);
+  if (next.length === bookmarks.length) return { status: 404, json: { error: "unknown bookmark" } };
+  store.writeBookmarks(bookId, next);
+  return { status: 200, json: { ok: true } };
+}
+
 // ── 门禁读取（AI 侧） ──
 
 function gateInfo(bookId) {
@@ -427,6 +464,20 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && (m = p.match(/^\/api\/annotations\/([\w-]+)\/([\w-]+)\/comment$/))) {
       const out = addComment(m[1], m[2], await readBody(req));
+      return send(res, out.status, out.json);
+    }
+
+    if (req.method === "GET" && (m = p.match(/^\/api\/bookmarks\/([\w-]+)$/))) {
+      return send(res, 200, { bookmarks: store.readBookmarks(m[1]) });
+    }
+
+    if (req.method === "POST" && p === "/api/bookmarks") {
+      const out = createBookmark(await readBody(req));
+      return send(res, out.status, out.json);
+    }
+
+    if (req.method === "DELETE" && (m = p.match(/^\/api\/bookmarks\/([\w-]+)\/([\w-]+)$/))) {
+      const out = deleteBookmark(m[1], m[2]);
       return send(res, out.status, out.json);
     }
 

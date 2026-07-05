@@ -290,6 +290,12 @@ function esc(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+function fmtDur(ms) {
+  const minutes = Math.round((ms || 0) / 60000);
+  if (minutes < 60) return `${minutes}分钟`;
+  return `${Math.floor(minutes / 60)}小时${minutes % 60}分`;
+}
+
 function fmtTime(iso) {
   if (!iso) return '';
   const d = new Date(iso);
@@ -346,6 +352,7 @@ async function openBookPanel(bookId) {
     R.book.lastPos = detail.lastPos;
     R.book.progressPct = detail.progressPct;
     R.book.lastOpenedAt = detail.lastOpenedAt;
+    R.book.totalReadMs = detail.totalReadMs;
     R.annos = annos.annotations;
     refreshBookMeta();
     renderBookList();
@@ -358,6 +365,7 @@ function refreshBookMeta() {
   const b = R.book;
   document.getElementById('bk-meta').innerHTML =
     `${esc(b.author)}<br>已读 ${b.progressPct || 0}%` +
+    (b.totalReadMs ? ` · 共读 ${fmtDur(b.totalReadMs)}` : '') +
     (b.lastOpenedAt ? `<br>上次翻开 ${fmtTime(b.lastOpenedAt)}` : '<br>还没翻开过');
 }
 

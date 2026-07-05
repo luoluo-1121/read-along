@@ -18,6 +18,12 @@ function pct(bs, manifest) {
   return Math.min(100, Math.round(((bs.furthestSeq + 1) / manifest.paraCount) * 1000) / 10);
 }
 
+function fmtDur(ms) {
+  const minutes = Math.round((ms || 0) / 60000);
+  if (minutes < 60) return `${minutes}分钟`;
+  return `${Math.floor(minutes / 60)}小时${minutes % 60}分`;
+}
+
 function chapterOfSeq(manifest, seq) {
   let found = manifest.chapters[0];
   for (const ch of manifest.chapters) {
@@ -36,13 +42,13 @@ function pushOpen(bs, manifest) {
   );
 }
 
-function pushClose(bs, manifest, { auto = false } = {}) {
-  const minutes = bs.session ? Math.max(1, Math.round((Date.now() - bs.session.openedAt) / 60000)) : 0;
+function pushClose(bs, manifest, { auto = false, sessionMs = 0 } = {}) {
+  const minutes = Math.max(1, Math.round(sessionMs / 60000));
   const chars = bs.session ? bs.session.pushedChars : 0;
   const ch = bs.lastPos ? manifest.chapters[bs.lastPos.chapter] : null;
   enqueueSystemMessage(
     `【共读·合卷】${READER_NAME}${auto ? "有一会儿没翻页了，应该是放下了" : "合上了"}《${manifest.title}》。` +
-    `这次读了约${minutes}分钟、${chars}字，停在${ch ? ch.title : "开头"}（进度${pct(bs, manifest)}%）。共读模式结束。`
+    `这次读了约${minutes}分钟、${chars}字，停在${ch ? ch.title : "开头"}（进度${pct(bs, manifest)}%，本书累计共读${fmtDur(bs.totalReadMs)}）。共读模式结束。`
   );
 }
 
@@ -125,9 +131,11 @@ function handleBeat(body) {
   } else if (event === "close") {
     if (bs.session) {
       evaluatePending(state, bookId);
+      const sessionMs = Math.max(0, now - bs.session.openedAt);
+      bs.totalReadMs = (bs.totalReadMs || 0) + sessionMs;
       // 没读出内容且不到1分钟的会话（误点、纯跳转）静默关闭
-      if (bs.session.pushedChars > 0 || now - bs.session.openedAt >= 60000) {
-        pushClose(bs, manifest, { auto: false });
+      if (bs.session.pushedChars > 0 || sessionMs >= 60000) {
+        pushClose(bs, manifest, { auto: false, sessionMs });
       }
       bs.lastClosedAt = now;
       bs.session = null;
@@ -153,7 +161,10 @@ setInterval(() => {
       if (bs.session && Date.now() - bs.session.lastBeatAt > IDLE_CLOSE_MS) {
         const manifest = store.readManifest(bookId);
         evaluatePending(state, bookId);
-        if (manifest) pushClose(bs, manifest, { auto: true });
+        // 掐掉断连后的空转时间，只算到最后一次心跳
+        const sessionMs = Math.max(0, bs.session.lastBeatAt - bs.session.openedAt);
+        bs.totalReadMs = (bs.totalReadMs || 0) + sessionMs;
+        if (manifest) pushClose(bs, manifest, { auto: true, sessionMs });
         bs.session = null;
         dirty = true;
       }
@@ -362,6 +373,7 @@ const server = http.createServer(async (req, res) => {
           progressPct: pct(bs, manifest),
           lastOpenedAt: bs.lastOpenedAt,
           lastPos: bs.lastPos,
+          totalReadMs: bs.totalReadMs || 0,
           hasCover: Boolean(manifest.coverExt),
           annotationCount: store.readAnnotations(bookId).length,
         };
@@ -374,7 +386,7 @@ const server = http.createServer(async (req, res) => {
       if (!manifest) return send(res, 404, { error: "unknown book" });
       const state = store.readState();
       const bs = store.bookState(state, m[1]);
-      return send(res, 200, { manifest, progressPct: pct(bs, manifest), lastPos: bs.lastPos, lastOpenedAt: bs.lastOpenedAt });
+      return send(res, 200, { manifest, progressPct: pct(bs, manifest), lastPos: bs.lastPos, lastOpenedAt: bs.lastOpenedAt, totalReadMs: bs.totalReadMs || 0 });
     }
 
     if (req.method === "GET" && (m = p.match(/^\/api\/book\/([\w-]+)\/chapter\/(\d+)$/))) {

@@ -12,6 +12,14 @@ const { importParsed } = require("./lib/import");
 const PORT = Number(process.env.READING_PORT || 18004);
 const DWELL_MS = Number(process.env.READING_DWELL_MS || 15000);
 const IDLE_CLOSE_MS = Number(process.env.READING_IDLE_MS || 5 * 60 * 1000);
+const DWELL_MIN_S = 5;
+const DWELL_MAX_S = 60;
+
+// 停留时长可被前端设置覆盖（存 state.json），否则用环境变量/默认值
+function dwellMsOf(state) {
+  const v = Number(state.settings?.dwellMs);
+  return Number.isFinite(v) && v >= DWELL_MIN_S * 1000 && v <= DWELL_MAX_S * 1000 ? v : DWELL_MS;
+}
 const READER_NAME = process.env.READING_READER_NAME || "TA";
 
 // ── 推送文案 ──
@@ -69,7 +77,7 @@ function evaluatePending(state, bookId) {
   const session = bs.session;
   if (!session || !session.pending) return;
   const pending = session.pending;
-  if (Date.now() - pending.since < DWELL_MS) return;
+  if (Date.now() - pending.since < dwellMsOf(state)) return;
 
   const manifest = store.readManifest(bookId);
   if (!manifest) return;
@@ -485,6 +493,23 @@ const server = http.createServer(async (req, res) => {
       } catch (error) {
         return send(res, error.status || 400, { error: String(error?.message || error) });
       }
+    }
+
+    if (req.method === "GET" && p === "/api/settings") {
+      const state = store.readState();
+      return send(res, 200, { dwellSec: Math.round(dwellMsOf(state) / 1000), min: DWELL_MIN_S, max: DWELL_MAX_S });
+    }
+
+    if (req.method === "POST" && p === "/api/settings") {
+      const body = await readBody(req);
+      const sec = Number(body.dwellSec);
+      if (!Number.isInteger(sec) || sec < DWELL_MIN_S || sec > DWELL_MAX_S) {
+        return send(res, 400, { error: `dwellSec 需为 ${DWELL_MIN_S}-${DWELL_MAX_S} 的整数` });
+      }
+      const state = store.readState();
+      state.settings = Object.assign({}, state.settings, { dwellMs: sec * 1000 });
+      store.writeState(state);
+      return send(res, 200, { ok: true, dwellSec: sec });
     }
 
     if (req.method === "POST" && p === "/api/beat") {

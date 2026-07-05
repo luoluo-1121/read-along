@@ -75,7 +75,7 @@ cyberboss 系统消息队列 / 你的 webhook
 | 变量 | 默认值 | 说明 |
 |---|---|---|
 | `READING_PORT` | `18004` | 监听端口（仅绑 127.0.0.1） |
-| `READING_DWELL_MS` | `15000` | 一页停留多少毫秒算"读过" |
+| `READING_DWELL_MS` | `15000` | 一页停留多少毫秒算"读过"（也可在阅读器设置面板里直接改，面板设置存 state.json、优先于此值） |
 | `READING_IDLE_MS` | `300000` | 心跳断多久自动判定合卷 |
 | `READING_PUSH_ENABLED` | 空 | `=1` 时写 cyberboss 系统消息队列 |
 | `CYBERBOSS_STATE_DIR` | `~/.cyberboss` | cyberboss 状态目录 |

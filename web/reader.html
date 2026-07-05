@@ -104,6 +104,22 @@ html, body { height: 100%; background: var(--bg); font-family: -apple-system, "P
 .seg3 button { padding: 8px 13px; border: none; background: var(--card); font-size: 13px; color: var(--muted); font-family: inherit; }
 .seg3 button.on { background: var(--accent); color: var(--accent-text); }
 
+.set-sep { font-size: 12px; color: var(--faint); padding: 12px 2px 2px; border-top: 1px solid var(--border-soft); margin-top: 8px; }
+.set-row .hint { color: var(--ai); font-size: 13px; }
+#dwell-val { color: var(--accent); font-weight: 700; }
+
+/* ── 小弹窗 ── */
+.dlg-mask { position: fixed; inset: 0; background: var(--mask); display: none; align-items: center; justify-content: center; z-index: 55; }
+.dlg-mask.open { display: flex; }
+.dlg { background: var(--card); border-radius: 14px; padding: 18px; width: min(320px, 86vw); }
+.dlg-title { font-size: 15px; font-weight: 600; margin-bottom: 12px; }
+.dlg-body { display: flex; align-items: center; gap: 8px; font-size: 15px; margin-bottom: 10px; }
+.dlg-body input { flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: 9px; padding: 9px 11px; font-size: 16px; font-family: inherit; background: var(--card); color: var(--text); text-align: center; }
+.dlg-tip { font-size: 12px; color: var(--faint); line-height: 1.6; margin-bottom: 14px; }
+.dlg-btns { display: flex; gap: 10px; }
+.dlg-btns button { flex: 1; padding: 10px 0; border: 1px solid var(--border); border-radius: 9px; background: var(--card); color: var(--text); font-size: 14px; font-family: inherit; }
+.dlg-btns button.pri { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+
 /* ── 目录弹层 ── */
 #sheet-toc { max-height: 76vh; }
 .toc-head { font-size: 15px; font-weight: 700; padding-bottom: 8px; }
@@ -209,6 +225,20 @@ html, body { height: 100%; background: var(--bg); font-family: -apple-system, "P
       <button data-t="light">日间</button>
       <button data-t="dark">夜间</button>
     </div>
+  </div>
+  <div class="set-sep">共读</div>
+  <div class="set-row" id="dwell-row">
+    <span>停留（<b id="dwell-val">…</b>）秒后推送给 AI</span>
+    <span class="hint">修改</span>
+  </div>
+</div>
+
+<div class="dlg-mask" id="dwell-dlg">
+  <div class="dlg">
+    <div class="dlg-title">在一页停留几秒后推送给 AI？</div>
+    <div class="dlg-body"><input id="dwell-input" type="number" inputmode="numeric" min="5" max="60"><span>秒</span></div>
+    <div class="dlg-tip">范围 5–60，保存后立刻生效（对所有设备）。数字越小推得越勤，AI 的 token 消耗也越大。</div>
+    <div class="dlg-btns"><button id="dwell-cancel">取消</button><button class="pri" id="dwell-ok">确认</button></div>
   </div>
 </div>
 
@@ -740,7 +770,7 @@ reader.addEventListener('click', async (e) => {
   if (e.target.closest('#rb-prev')) { closeBar(); if (R.ch > 0) await showChapter(R.ch - 1, null); return; }
   if (e.target.closest('#rb-next')) { closeBar(); if (R.ch < R.manifest.chapterCount - 1) await showChapter(R.ch + 1, null); return; }
   if (e.target.closest('#rb-toc')) { closeBar(); openTocSheet(); return; }
-  if (e.target.closest('#rb-set')) { closeBar(); openSheetEl(document.getElementById('sheet-set')); return; }
+  if (e.target.closest('#rb-set')) { closeBar(); openSetSheet(); return; }
   if (e.target.closest('#rbar')) return;
   // 工具条展开期间：点任意处只收起，不翻页不选中
   if (reader.classList.contains('bar-open')) { closeBar(); return; }
@@ -1020,6 +1050,47 @@ document.getElementById('theme-seg').addEventListener('click', (e) => {
   settings.theme = b.dataset.t;
   saveSettings();
   applyTheme();
+});
+
+/* ── 停留推送时长（服务端全局设置） ── */
+
+R.dwell = null;
+
+async function openSetSheet() {
+  openSheetEl(document.getElementById('sheet-set'));
+  if (R.dwell === null) {
+    try {
+      const s = await apiGet('/settings');
+      R.dwell = s.dwellSec;
+    } catch { R.dwell = 15; }
+  }
+  document.getElementById('dwell-val').textContent = R.dwell;
+}
+
+const dwellDlg = document.getElementById('dwell-dlg');
+
+document.getElementById('dwell-row').addEventListener('click', () => {
+  const input = document.getElementById('dwell-input');
+  input.value = R.dwell || 15;
+  dwellDlg.classList.add('open');
+  setTimeout(() => { input.focus(); input.select(); }, 100);
+});
+
+document.getElementById('dwell-cancel').addEventListener('click', () => dwellDlg.classList.remove('open'));
+dwellDlg.addEventListener('click', (e) => { if (e.target === dwellDlg) dwellDlg.classList.remove('open'); });
+
+document.getElementById('dwell-ok').addEventListener('click', async () => {
+  const sec = Number(document.getElementById('dwell-input').value);
+  if (!Number.isInteger(sec) || sec < 5 || sec > 60) { toast('请输入 5–60 的整数'); return; }
+  try {
+    await apiPost('/settings', { dwellSec: sec });
+    R.dwell = sec;
+    document.getElementById('dwell-val').textContent = sec;
+    dwellDlg.classList.remove('open');
+    toast(`已生效：停留${sec}秒推送`);
+  } catch (e) {
+    toast('保存失败：' + e.message);
+  }
 });
 
 applyTheme();

@@ -58,6 +58,7 @@ location /reading/api/ {
     proxy_http_version 1.1;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
+    client_max_body_size 50m;   # 网页端导入书籍文件需要
 }
 ```
 
@@ -96,10 +97,11 @@ pm2 startup    # 按提示配置开机自启
 
 ## 5. 导入第一本书并验证
 
-1. 导入（成功会打印 bookId、章节数、总字数、是否带封面）：
+1. 导入。命令行方式（成功会打印 bookId、章节数、总字数、是否带封面）：
    ```bash
-   node import-book.js /path/to/book.epub --id mybook
+   node import-book.js /path/to/book.epub --id mybook   # 也支持 .txt
    ```
+   或直接在手机书架页点「＋导入」上传 epub/txt。TXT 会按「第X章/回/节/卷」等标题行自动切章节（识别不出就按字数分段），UTF-8 之外自动回退 GBK 解码。
 2. 后端自检：
    ```bash
    curl -s localhost:18004/health        # {"ok":true,"pushEnabled":false}

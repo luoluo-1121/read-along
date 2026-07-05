@@ -5,6 +5,9 @@ const fs = require("fs");
 const path = require("path");
 const store = require("./lib/store");
 const { enqueueSystemMessage, PUSH_ENABLED } = require("./lib/push");
+const { parseEpub } = require("./lib/epub");
+const { parseTxt } = require("./lib/txt");
+const { importParsed } = require("./lib/import");
 
 const PORT = Number(process.env.READING_PORT || 18004);
 const DWELL_MS = Number(process.env.READING_DWELL_MS || 15000);
@@ -372,6 +375,26 @@ function send(res, status, json) {
   res.end(body);
 }
 
+const IMPORT_MAX_BYTES = 50 * 1024 * 1024;
+
+function readRawBody(req, maxBytes) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    req.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > maxBytes) {
+        reject(Object.assign(new Error("文件太大（上限50MB）"), { status: 413 }));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => resolve(Buffer.concat(chunks)));
+    req.on("error", reject);
+  });
+}
+
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let data = "";
@@ -439,6 +462,28 @@ const server = http.createServer(async (req, res) => {
       const type = manifest.coverExt === ".png" ? "image/png" : "image/jpeg";
       res.writeHead(200, { "Content-Type": type, "Cache-Control": "public, max-age=86400" });
       return fs.createReadStream(file).pipe(res);
+    }
+
+    if (req.method === "POST" && p === "/api/import") {
+      // 前端上传：文件二进制作请求体，文件名走查询参数（免 multipart）
+      try {
+        const filename = decodeURIComponent(url.searchParams.get("filename") || "");
+        const ext = path.extname(filename).toLowerCase();
+        if (![".epub", ".txt"].includes(ext)) return send(res, 400, { error: "只支持 .epub 和 .txt" });
+        const buffer = await readRawBody(req, IMPORT_MAX_BYTES);
+        if (!buffer.length) return send(res, 400, { error: "empty file" });
+        const parsed = ext === ".epub"
+          ? parseEpub(buffer)
+          : parseTxt(buffer, { fallbackTitle: path.basename(filename, ext) });
+        const book = importParsed(parsed, {
+          bookId: url.searchParams.get("id") || undefined,
+          sourceFile: filename,
+          allowOverwrite: false,
+        });
+        return send(res, 200, { ok: true, book });
+      } catch (error) {
+        return send(res, error.status || 400, { error: String(error?.message || error) });
+      }
     }
 
     if (req.method === "POST" && p === "/api/beat") {

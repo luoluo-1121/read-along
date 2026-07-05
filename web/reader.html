@@ -329,7 +329,7 @@ async function loadShelf() {
         <img src="${esc(coverUrl(b))}" alt="" onerror="this.style.visibility='hidden'">
         <div>
           <div class="t">${esc(b.title)}</div>
-          <div class="m">${esc(b.author)} · ${b.chapterCount}章<br>已读 ${b.progressPct || 0}% · 批注 ${b.annotationCount} 条</div>
+          <div class="m">${esc(b.author)} · ${b.chapterCount}章<br>已读 ${b.progressPct || 0}% · 批注 ${b.annotationCount} 条${b.readingChapter ? `<br>正在读 ${esc(b.readingChapter)}` : ''}</div>
         </div>
       </div>`
     ).join('');

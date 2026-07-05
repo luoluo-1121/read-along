@@ -433,6 +433,7 @@ const server = http.createServer(async (req, res) => {
           progressPct: pct(bs, manifest),
           lastOpenedAt: bs.lastOpenedAt,
           lastPos: bs.lastPos,
+          readingChapter: bs.lastPos && manifest.chapters[bs.lastPos.chapter] ? manifest.chapters[bs.lastPos.chapter].title : "",
           totalReadMs: bs.totalReadMs || 0,
           hasCover: Boolean(manifest.coverExt),
           annotationCount: store.readAnnotations(bookId).length,

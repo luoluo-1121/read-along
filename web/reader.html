@@ -191,6 +191,10 @@ async function apiPost(path, body) {
   return json;
 }
 
+function coverUrl(book) {
+  return book && book.hasCover ? `${API}/cover/${book.bookId}` : '';
+}
+
 function esc(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
@@ -212,7 +216,7 @@ async function loadShelf() {
     if (!books.length) { grid.innerHTML = '<div class="empty-tip">书架空空，先用 import-book.js 导入一本</div>'; return; }
     grid.innerHTML = books.map((b) =>
       `<div class="book-card" data-book-id="${esc(b.bookId)}">
-        <img src="${esc(b.coverUrl || '')}" alt="" onerror="this.style.visibility='hidden'">
+        <img src="${esc(coverUrl(b))}" alt="" onerror="this.style.visibility='hidden'">
         <div>
           <div class="t">${esc(b.title)}</div>
           <div class="m">${esc(b.author)} · ${b.chapterCount}章<br>已读 ${b.progressPct || 0}% · 批注 ${b.annotationCount} 条</div>
@@ -236,7 +240,7 @@ async function openBookPanel(bookId) {
   if (!book) return;
   R.book = book;
   R.chapters = {};
-  document.getElementById('bk-cover').src = book.coverUrl || '';
+  document.getElementById('bk-cover').src = coverUrl(book);
   document.getElementById('bk-title').textContent = book.title;
   refreshBookMeta();
   R.panelMode = 'annos';

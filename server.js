@@ -362,7 +362,7 @@ const server = http.createServer(async (req, res) => {
           progressPct: pct(bs, manifest),
           lastOpenedAt: bs.lastOpenedAt,
           lastPos: bs.lastPos,
-          coverUrl: manifest.coverExt ? `/reading/api/cover/${bookId}` : "",
+          hasCover: Boolean(manifest.coverExt),
           annotationCount: store.readAnnotations(bookId).length,
         };
       });
